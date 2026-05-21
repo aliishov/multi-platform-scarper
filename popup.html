@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 100%; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #fff; color: #0f1419; margin: 0; box-sizing: border-box; }
+    h3 { margin-top: 0; margin-bottom: 16px; font-size: 18px; }
+    label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+    textarea.input-box { width: 100%; height: 80px; margin-bottom: 12px; padding: 8px; border: 1px solid #cfd9de; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box; }
+    input.input-box { width: 100%; margin-bottom: 12px; padding: 8px; border: 1px solid #cfd9de; border-radius: 4px; font-family: inherit; box-sizing: border-box; }
+    select.input-box { width: 100%; margin-bottom: 12px; padding: 8px; border: 1px solid #cfd9de; border-radius: 4px; font-family: inherit; box-sizing: border-box; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23536471' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 8px center; background-size: 16px; cursor: pointer; background-color: #fff; }
+    .btn-group { display: flex; gap: 8px; margin-bottom: 12px; }
+    button { flex: 1; padding: 10px; color: white; border: none; cursor: pointer; border-radius: 9999px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
+    #start { background: #1d9bf0; }
+    #start:hover { background: #1a8cd8; }
+    #start:disabled { background: #8ecdf8; cursor: not-allowed; }
+    #stop { background: #f4212e; display: none; }
+    #stop:hover { background: #e0202c; }
+    #status { font-size: 13px; color: #536471; margin-bottom: 8px; font-weight: 500; }
+    #logs { height: 300px; overflow-y: auto; background: #f7f9f9; border: 1px solid #cfd9de; border-radius: 4px; padding: 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; color: #0f1419; white-space: pre-wrap; word-wrap: break-word; }
+    .log-entry { margin-bottom: 4px; border-bottom: 1px solid #eff3f4; padding-bottom: 2px; }
+    .log-time { color: #536471; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <h3>Multi platform scarper</h3>
+  <label>Социальная сеть:</label>
+  <select id="platform" class="input-box" style="margin-bottom: 10px;">
+    <option value="twitter">X (Twitter)</option>
+    <option value="facebook">Facebook</option>
+  </select>
+  <label>Ключевые слова (каждое с новой строки):</label>
+  <textarea id="keywords" class="input-box" placeholder="Например:&#10;mercedes&#10;bmw"></textarea>
+  <label>Макс. постов на слово:</label>
+  <input type="number" id="count" class="input-box" value="10" min="1" />
+  
+  <div id="status">Готов к запуску</div>
+  
+  <div class="btn-group">
+    <button id="start">Начать сбор</button>
+    <button id="stop">Остановить</button>
+  </div>
+  
+  <label>Логи:</label>
+  <div id="logs"></div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

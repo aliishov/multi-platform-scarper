@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Multi platform scarper",
+  "version": "1.4",
+  "description": "Automates searching and scraping recent posts on X.com",
+  "permissions": ["storage", "activeTab", "scripting", "downloads", "sidePanel"],
+  "host_permissions": ["*://x.com/*", "*://twitter.com/*", "*://www.facebook.com/*", "*://facebook.com/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "action": {
+    "default_title": "Открыть панель скрапера"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://x.com/*", "*://twitter.com/*", "*://www.facebook.com/*", "*://facebook.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
