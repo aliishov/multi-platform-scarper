@@ -26,6 +26,24 @@ async function addLog(message, localState = null) {
   }
 }
 
+async function simulateTypingSimple(element, text) {
+  element.focus();
+  element.click();
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  const setter = nativeInputValueSetter || function(val) { this.value = val; };
+  
+  setter.call(element, '');
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(100);
+  
+  for (let i = 0; i < text.length; i++) {
+    setter.call(element, element.value + text[i]);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(20);
+  }
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 async function simulateTyping(element, text, platform) {
   await addLog(`Фокус на строке поиска. Очистка старого текста...`);
   element.focus();
@@ -33,20 +51,19 @@ async function simulateTyping(element, text, platform) {
   
   // React input clearing hack
   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-  if (nativeInputValueSetter) {
-    nativeInputValueSetter.call(element, '');
-  } else {
-    element.value = '';
-  }
+  const setter = nativeInputValueSetter || function(val) { this.value = val; };
+  
+  setter.call(element, '');
   element.dispatchEvent(new Event('input', { bubbles: true }));
   await sleep(500);
   
   await addLog(`Начинаю медленный ввод...`);
   for (let i = 0; i < text.length; i++) {
-    element.value += text[i];
+    setter.call(element, element.value + text[i]);
     element.dispatchEvent(new Event('input', { bubbles: true }));
     await sleep(Math.floor(Math.random() * 200) + 100);
   }
+  element.dispatchEvent(new Event('change', { bubbles: true }));
   
   await addLog(`Ввод завершен. Эмулирую нажатие поиска...`);
   await sleep(800);
@@ -90,14 +107,172 @@ async function runStateMachine() {
   
   if (!state || !state.active) return;
 
-  if (state.step === 'SEARCHING') {
+  if (state.step === 'INITIAL_CHECK') {
+    if (state.platform === 'twitter') {
+      const isLoggedOut = document.querySelector('a[href="/login"]') || document.querySelector('a[href="/i/flow/login"]') || window.location.href.includes('login') || window.location.href.includes('onboarding');
+      if (isLoggedOut) {
+         let isNavigating = false;
+         if (!window.location.href.includes('/login') && !window.location.href.includes('login_enter_password') && !window.location.href.includes('onboarding')) {
+             window.location.assign('https://x.com/login');
+             isNavigating = true;
+             return;
+         }
+        await addLog(`Twitter: не залогинен. Начинаю процесс входа...`);
+        if (!window.location.href.includes('/i/flow/login')) {
+          // removed
+        }
+        
+        await sleep(3000);
+        let passwordInput = document.querySelector('input[type="password"]:not([aria-hidden="true"]):not([tabindex="-1"])') || document.querySelector('input[name="password"]:not([aria-hidden="true"])');
+        let usernameInput = document.querySelector('input[name="username_or_email"]') || document.querySelector('input[autocomplete*="username"]') || document.querySelector('input[name="text"]') || document.querySelector('input:not([type="hidden"])');
+        
+        if (!passwordInput && usernameInput) {
+           await simulateTypingSimple(usernameInput, "AlexeyMoro51303");
+           
+           usernameInput.blur();
+           await sleep(500);
+
+           // Look for Continue, Next, etc.
+           const nextBtn = Array.from(document.querySelectorAll('div[data-testid*="next"], button')).find(b => {
+               const t = b.innerText?.trim().toLowerCase();
+               return t === 'next' || t === 'далее' || t === 'continue' || t === 'дальше';
+           });
+           
+           const textNode = Array.from(document.querySelectorAll('span, p')).find(b => {
+             const text = b.innerText?.trim().toLowerCase();
+             return (text === 'next' || text === 'далее' || text === 'continue' || text === 'дальше') && b.children.length === 0;
+           });
+
+           if (nextBtn) {
+             nextBtn.click();
+           } else if (textNode) {
+             textNode.click();
+             if (textNode.parentElement) textNode.parentElement.click();
+             if (textNode.parentElement?.parentElement) textNode.parentElement.parentElement.click();
+           }
+           
+           // Also try pressing enter on the input just in case
+           usernameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+           usernameInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+           
+           // Emulate form submit if applicable
+           const form = usernameInput.closest('form');
+           if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+           await sleep(3000);
+        }
+        
+        passwordInput = document.querySelector('input[type="password"]:not([aria-hidden="true"]):not([tabindex="-1"])') || document.querySelector('input[name="password"]:not([aria-hidden="true"])');
+        if (passwordInput) {
+           await simulateTypingSimple(passwordInput, "!pLYpMKQb3iz+ys");
+           
+           passwordInput.blur();
+           await sleep(500);
+
+           const loginBtn = document.querySelector('[data-testid="LoginForm_Login_Button"]') || Array.from(document.querySelectorAll('div[data-testid*="Login"], button')).find(b => {
+               const t = b.innerText?.trim().toLowerCase();
+               return t === 'log in' || t === 'войти' || t === 'вход' || t === 'login' || t === 'continue';
+           });
+           
+           const loginText = Array.from(document.querySelectorAll('span, p')).find(b => {
+             const text = b.innerText?.trim().toLowerCase();
+             return (text === 'log in' || text === 'войти' || text === 'вход' || text === 'login' || text === 'continue') && b.children.length === 0;
+           });
+
+           if (loginBtn) {
+             loginBtn.click();
+           } else if (loginText) {
+             loginText.click();
+             if (loginText.parentElement) loginText.parentElement.click();
+             if (loginText.parentElement?.parentElement) loginText.parentElement.parentElement.click();
+           }
+           
+           passwordInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+           passwordInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+
+           const pForm = passwordInput.closest('form');
+           if (pForm) pForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+           await sleep(5000); // Wait for login to finish
+        }
+        
+        // Check if login was successful, redirect to explore
+        if (document.querySelector('[data-testid="AppTabBar_Explore_Link"]')) {
+           window.location.assign('https://x.com/explore');
+           return;
+        }
+        
+        await addLog('Ожидание логина (X)...');
+        setTimeout(runStateMachine, 3000);
+        return;
+
+      } else {
+         await addLog(`Twitter: залогинен. Переход к поиску...`);
+         state.step = 'SEARCHING';
+         await chrome.storage.local.set({ scrapeState: state });
+         if (!window.location.href.includes('/explore') && !window.location.href.includes('/search')) {
+            window.location.assign('https://x.com/explore');
+            return;
+         }
+         runStateMachine();
+         return;
+      }
+    } else if (state.platform === 'facebook') {
+      const emailInputExists = document.getElementById('email');
+      const passInputExists = document.getElementById('pass');
+      
+      const useAnotherProfileBtn = Array.from(document.querySelectorAll('div[role="button"], span, a, button')).find(el => el.innerText && (
+        el.innerText.toLowerCase() === 'use another profile' || 
+        el.innerText.toLowerCase() === 'log into another account' || 
+        el.innerText.toLowerCase() === 'use another account' ||
+        el.innerText.toLowerCase().includes('другой аккаунт') ||
+        el.innerText.toLowerCase().includes('другой профиль') ||
+        el.innerText.toLowerCase().includes('another profile')
+      ));
+
+      const isLoggedOut = emailInputExists || passInputExists || useAnotherProfileBtn || window.location.href.includes('/login');
+
+      if (isLoggedOut) {
+         if (useAnotherProfileBtn) {
+             await addLog(`Facebook: Нажимаю кнопку для выбора другого профиля...`);
+             useAnotherProfileBtn.click();
+             await sleep(2000);
+         }
+         await addLog(`Facebook: не залогинен. Ввожу данные...`);
+         const emailInput = document.getElementById('email') || document.querySelector('input[name="email"]') || document.querySelector('input[type="text"]') || document.getElementById('_r_6_');
+         const passInput = document.getElementById('pass') || document.querySelector('input[name="pass"]') || document.querySelector('input[type="password"]') || document.getElementById('_r_9_');
+         const loginBtn = document.querySelector('button[name="login"]') || document.querySelector('button[type="submit"]') || document.querySelector('div[aria-label="Log In"][role="button"]');
+         
+         if (emailInput && passInput) {
+           await simulateTypingSimple(emailInput, "raulalishov849@gmail.com");
+           await simulateTypingSimple(passInput, "Ds7B*R@qjgMdudw");
+           if (loginBtn) {
+               loginBtn.click();
+           } else {
+               const loginForm = document.getElementById('login_form');
+               if (loginForm) loginForm.submit();
+           }
+           await sleep(5000); // Wait for login
+           window.location.assign('https://www.facebook.com/');
+           return;
+         }
+      } else {
+         await addLog(`Facebook: залогинен. Переход к поиску...`);
+         state.step = 'SEARCHING';
+         await chrome.storage.local.set({ scrapeState: state });
+         runStateMachine();
+         return;
+      }
+    }
+  } else if (state.step === 'SEARCHING') {
+
     await addLog(`Ищу строку поиска на текущей странице...`);
     let searchInput = null;
     for(let i=0; i<10; i++) {
       if (state.platform === 'facebook') {
         searchInput = document.querySelector('input[type="search"], [role="search"] input, input[placeholder*="Search" i], input[placeholder*="Поиск" i]');
       } else {
-        searchInput = document.querySelector('[data-testid="SearchBox_Search_Input"]');
+        searchInput = document.querySelector('[data-testid="SearchBox_Search_Input"]') || document.querySelector('input[aria-label*="Search" i]') || document.querySelector('input[placeholder*="Search" i]') || document.querySelector('input[aria-label*="Поиск" i]') || document.querySelector('input[placeholder*="Поиск" i]') || document.querySelector('[role="search"] input');
       }
       if (searchInput) break;
       await sleep(1000);
@@ -229,7 +404,7 @@ async function runStateMachine() {
       
       await addLog(`Ожидание появления постов Facebook...`);
       for(let i=0; i<15; i++) {
-        if (document.querySelectorAll('[role="article"], [data-pagelet*="FeedUnit"]').length > 0) break;
+        if (document.querySelectorAll('[role="article"], [data-pagelet*="FeedUnit"], div[data-ad-comet-preview="message"], div[data-ad-preview="message"]').length > 0) break;
         await sleep(1000);
       }
       await addLog(`Начинаю сбор постов по слову "${state.currentKeyword}"...`);
@@ -452,7 +627,30 @@ async function scrapeFacebookLoop(state) {
     }
     state = currentRes.scrapeState;
 
-    const articles = document.querySelectorAll('[role="article"], [data-pagelet*="FeedUnit"]');
+    let articles = Array.from(document.querySelectorAll('[role="article"], [data-pagelet*="FeedUnit"], div.x1yztbdb, div.x1lliihq > div.x1n2onr6 > div[style*="border-radius"]'));
+    if (articles.length < 2) {
+      const timeLinks = Array.from(document.querySelectorAll('a[href*="/posts/"], a[href*="/permalink/"], a[href*="story_fbid="], a[href*="/photos/"], a[href*="/videos/"], h2 a[href], h3 a[href], h4 a[href], strong a[href]'));
+      const uniqueParents = new Set(articles);
+      for (const link of timeLinks) {
+         let p = link.parentElement;
+         let found = null;
+         for(let i=0; i<15; i++) {
+           if (!p) break;
+           const rect = p.getBoundingClientRect();
+           // Looking for an element that spans the post content
+           if (rect.height > 100 && rect.height < 3000 && p.querySelector('[data-ad-comet-preview="message"], [data-testid="post_message"], div[dir="auto"]')) {
+              found = p;
+           }
+           if (rect.height > 3500) break; // Don't go too high (like main window)
+           p = p.parentElement;
+         }
+         if (found) {
+            uniqueParents.add(found);
+         }
+      }
+      articles = Array.from(uniqueParents);
+    }
+    
     let foundOldPost = false;
     let newPostsInThisScroll = 0;
     
@@ -465,20 +663,27 @@ async function scrapeFacebookLoop(state) {
         const anchors = Array.from(article.querySelectorAll('a[href]'));
         for (const a of anchors) {
           const h = a.href || '';
-          if (h.includes('/posts/') || h.includes('/permalink/') || h.includes('story_fbid=')) {
+          if (h.includes('/posts/') || h.includes('/permalink/') || h.includes('story_fbid=') || h.includes('/photos/') || h.includes('/videos/') || h.includes('/watch/') || h.includes('/groups/')) {
             postUrl = h;
             break;
           }
         }
         
         if (!postUrl) {
-          const timeAnchor = article.querySelector('a[aria-label], a[href]');
+          const timeAnchor = Array.from(article.querySelectorAll('a')).find(a => {
+            const lbl = String(a.getAttribute('aria-label') || '').toLowerCase();
+            const rel = String(a.getAttribute('rel') || '').toLowerCase();
+            return (lbl && lbl.length > 2 && /\d/.test(lbl)) || (a.innerText && /\d/.test(a.innerText) && (a.innerText.includes('ч')||a.innerText.includes('м')) && !a.href.includes('profile')) || rel.includes('noopener');
+          });
           if (timeAnchor && timeAnchor.href && timeAnchor.href.includes('facebook.com')) {
              postUrl = timeAnchor.href;
           }
         }
         
-        const signature = postUrl || article.innerText?.trim().substring(0, 100);
+        const textNodes = Array.from(article.querySelectorAll('[data-testid="post_message"], [data-ad-comet-preview="message"], div[dir="auto"]'));
+        const textContent = textNodes.map(n => n.innerText?.trim()).filter(Boolean).join('\n') || article.innerText?.trim() || "";
+        
+        const signature = postUrl || textContent.substring(0, 100);
         if (!signature || seenSignatures.has(signature)) continue;
         
         article.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -558,6 +763,10 @@ async function scrapeFacebookLoop(state) {
             text = nodes.map(n => n.innerText?.trim()).filter(Boolean).join('\n');
             if (text) break;
           }
+        }
+        
+        if (!text) {
+           text = article.innerText?.trim() || "";
         }
         
         // Media
@@ -661,7 +870,7 @@ async function finishKeyword(state) {
   if (state.queue.length > 0) {
     state.currentKeyword = state.queue.shift();
     state.currentPosts = [];
-    state.step = 'SEARCHING';
+    state.step = 'INITIAL_CHECK';
     await addLog(`Переход к следующему слову: ${state.currentKeyword}`);
     await chrome.storage.local.set({ scrapeState: state });
     

@@ -48,7 +48,7 @@ document.getElementById('start').addEventListener('click', () => {
     targetCount: count,
     currentPosts: [],
     allResults: [],
-    step: 'SEARCHING',
+    step: 'INITIAL_CHECK',
     logs: [`[${new Date().toLocaleTimeString()}] Запуск скрапера (${platform}). Первое слово: ${keywords[0]}`]
   };
   
