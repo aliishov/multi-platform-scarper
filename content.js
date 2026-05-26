@@ -419,20 +419,28 @@ async function scrapeTwitterLoop(state) {
   let lastPostCount = state.currentPosts.length;
   const seenUrls = new Set(state.currentPosts.map(p => p.url));
   
-  while (state.currentPosts.length < state.targetCount && state.active) {
+  while ((state.targetCount === -1 || state.currentPosts.length < state.targetCount) && state.active) {
     const currentRes = await chrome.storage.local.get(['scrapeState']);
     if (!currentRes.scrapeState || !currentRes.scrapeState.active) {
       await addLog(`Скрапинг прерван.`);
-      return;
+      state.active = false;
+      break;
     }
     state = currentRes.scrapeState;
+    
+    if (state.skipCurrentKeyword) {
+      await addLog(`Остановка сбора для этого слова (пропуск).`);
+      state.skipCurrentKeyword = false;
+      await chrome.storage.local.set({ scrapeState: state });
+      break;
+    }
 
     const articles = document.querySelectorAll('article[data-testid="tweet"]');
     let foundOldPost = false;
     let newPostsInThisScroll = 0;
     
     for (const article of articles) {
-      if (state.currentPosts.length >= state.targetCount) break;
+      if (state.targetCount !== -1 && state.currentPosts.length >= state.targetCount) break;
       
       try {
         const timeEl = article.querySelector('time');
@@ -462,12 +470,11 @@ async function scrapeTwitterLoop(state) {
         
         const dateStr = timeEl.getAttribute('datetime');
         const postDate = new Date(dateStr);
-        const now = new Date();
-        const diffHours = (now - postDate) / (1000 * 60 * 60);
         
-        if (diffHours > 48) {
+        if (state.dateLimit && !isNaN(postDate.getTime()) && postDate.getTime() < state.dateLimit) {
           foundOldPost = true;
-          await addLog(`Найден пост старше 48 часов (${Math.round(diffHours)} ч.). Остановка сбора для этого слова.`);
+          const limitStr = new Date(state.dateLimit).toLocaleString();
+          await addLog(`Найден пост от ${postDate.toLocaleString()}, что старше ограничения (${limitStr}). Остановка.`);
           break;
         }
         
@@ -505,28 +512,30 @@ async function scrapeTwitterLoop(state) {
         };
         state.currentPosts.push(postData);
         
-        chrome.runtime.sendMessage({
-          action: 'sendPostToServer',
-          data: {
-            source: 'twitter',
-            author: postData.author,
-            authorUrl: postData.authorUrl,
-            date: javaOffsetDateTime,
-            postUrl: postData.url,
-            postMedia: postData.media,
-            postText: postData.text
-          }
-        }).then(async (response) => {
-          if (response.success) {
-            await addLog(`✅ Пост от ${authorName} успешно отправлен на сервер.`);
-          } else if (response.status) {
-            await addLog(`⚠️ Ошибка сервера при отправке поста: ${response.status}`);
-          } else {
-            await addLog(`❌ Ошибка сети при отправке поста: ${response.error}`);
-          }
-        }).catch(async (err) => {
-          await addLog(`❌ Ошибка связи с расширением: ${err.message}`);
-        });
+        if (state.sendToServer !== false) {
+          chrome.runtime.sendMessage({
+            action: 'sendPostToServer',
+            data: {
+              source: 'twitter',
+              author: postData.author,
+              authorUrl: postData.authorUrl,
+              date: javaOffsetDateTime,
+              postUrl: postData.url,
+              postMedia: postData.media,
+              postText: postData.text
+            }
+          }).then(async (response) => {
+            if (response.success) {
+              await addLog(`✅ Пост от ${authorName} успешно отправлен на сервер.`);
+            } else if (response.status) {
+              await addLog(`⚠️ Ошибка сервера при отправке поста: ${response.status}`);
+            } else {
+              await addLog(`❌ Ошибка сети при отправке поста: ${response.error}`);
+            }
+          }).catch(async (err) => {
+            await addLog(`❌ Ошибка связи с расширением: ${err.message}`);
+          });
+        }
         
         newPostsInThisScroll++;
         await chrome.storage.local.set({ scrapeState: state });
@@ -537,10 +546,10 @@ async function scrapeTwitterLoop(state) {
     }
     
     if (newPostsInThisScroll > 0) {
-      await addLog(`Собрано постов: ${state.currentPosts.length} из ${state.targetCount}`);
+      await addLog(`Собрано постов: ${state.currentPosts.length}${state.targetCount !== -1 ? ' из ' + state.targetCount : ''}`);
     }
     
-    if (state.currentPosts.length >= state.targetCount || foundOldPost) {
+    if ((state.targetCount !== -1 && state.currentPosts.length >= state.targetCount) || foundOldPost) {
       break;
     }
     
@@ -619,13 +628,21 @@ async function scrapeFacebookLoop(state) {
   let lastPostCount = state.currentPosts.length;
   const seenSignatures = new Set(state.currentPosts.map(p => p.url));
   
-  while (state.currentPosts.length < state.targetCount && state.active) {
+  while ((state.targetCount === -1 || state.currentPosts.length < state.targetCount) && state.active) {
     const currentRes = await chrome.storage.local.get(['scrapeState']);
     if (!currentRes.scrapeState || !currentRes.scrapeState.active) {
       await addLog(`Скрапинг прерван.`);
-      return;
+      state.active = false;
+      break;
     }
     state = currentRes.scrapeState;
+    
+    if (state.skipCurrentKeyword) {
+      await addLog(`Остановка сбора для этого слова (пропуск).`);
+      state.skipCurrentKeyword = false;
+      await chrome.storage.local.set({ scrapeState: state });
+      break;
+    }
 
     let articles = Array.from(document.querySelectorAll('[role="article"], [data-pagelet*="FeedUnit"], div.x1yztbdb, div.x1lliihq > div.x1n2onr6 > div[style*="border-radius"]'));
     if (articles.length < 2) {
@@ -655,7 +672,7 @@ async function scrapeFacebookLoop(state) {
     let newPostsInThisScroll = 0;
     
     for (const article of articles) {
-      if (state.currentPosts.length >= state.targetCount) break;
+      if (state.targetCount !== -1 && state.currentPosts.length >= state.targetCount) break;
       
       try {
         // Find URL to use as signature
@@ -734,12 +751,11 @@ async function scrapeFacebookLoop(state) {
         }
         
         const postDate = parseFacebookDate(rawDate);
-        const now = new Date();
-        const diffHours = (now - postDate) / (1000 * 60 * 60);
         
-        if (diffHours > 48) {
+        if (state.dateLimit && !isNaN(postDate.getTime()) && postDate.getTime() < state.dateLimit) {
           foundOldPost = true;
-          await addLog(`Найден пост старше 48 часов (${Math.round(diffHours)} ч.). Остановка сбора для этого слова.`);
+          const limitStr = new Date(state.dateLimit).toLocaleString();
+          await addLog(`Найден пост от ${postDate.toLocaleString()}, что старше ограничения (${limitStr}). Остановка.`);
           break;
         }
         
@@ -802,28 +818,30 @@ async function scrapeFacebookLoop(state) {
         };
         state.currentPosts.push(postData);
         
-        chrome.runtime.sendMessage({
-          action: 'sendPostToServer',
-          data: {
-            source: 'facebook',
-            author: postData.author,
-            authorUrl: postData.authorUrl,
-            date: javaOffsetDateTime,
-            postUrl: postData.url,
-            postMedia: postData.media,
-            postText: postData.text
-          }
-        }).then(async (response) => {
-          if (response.success) {
-            await addLog(`✅ Пост от ${authorName} успешно отправлен на сервер.`);
-          } else if (response.status) {
-            await addLog(`⚠️ Ошибка сервера при отправке поста: ${response.status}`);
-          } else {
-            await addLog(`❌ Ошибка сети при отправке поста: ${response.error}`);
-          }
-        }).catch(async (err) => {
-          await addLog(`❌ Ошибка связи с расширением: ${err.message}`);
-        });
+        if (state.sendToServer !== false) {
+          chrome.runtime.sendMessage({
+            action: 'sendPostToServer',
+            data: {
+              source: 'facebook',
+              author: postData.author,
+              authorUrl: postData.authorUrl,
+              date: javaOffsetDateTime,
+              postUrl: postData.url,
+              postMedia: postData.media,
+              postText: postData.text
+            }
+          }).then(async (response) => {
+            if (response.success) {
+              await addLog(`✅ Пост от ${authorName} успешно отправлен на сервер.`);
+            } else if (response.status) {
+              await addLog(`⚠️ Ошибка сервера при отправке поста: ${response.status}`);
+            } else {
+              await addLog(`❌ Ошибка сети при отправке поста: ${response.error}`);
+            }
+          }).catch(async (err) => {
+            await addLog(`❌ Ошибка связи с расширением: ${err.message}`);
+          });
+        }
         
         newPostsInThisScroll++;
         await chrome.storage.local.set({ scrapeState: state });
@@ -834,10 +852,10 @@ async function scrapeFacebookLoop(state) {
     }
     
     if (newPostsInThisScroll > 0) {
-      await addLog(`Собрано постов: ${state.currentPosts.length} из ${state.targetCount}`);
+      await addLog(`Собрано постов: ${state.currentPosts.length}${state.targetCount !== -1 ? ' из ' + state.targetCount : ''}`);
     }
     
-    if (state.currentPosts.length >= state.targetCount || foundOldPost) {
+    if ((state.targetCount !== -1 && state.currentPosts.length >= state.targetCount) || foundOldPost) {
       break;
     }
     
@@ -861,13 +879,19 @@ async function scrapeFacebookLoop(state) {
 }
 
 async function finishKeyword(state) {
-  state.allResults.push({
-    keyword: state.currentKeyword,
-    posts: state.currentPosts,
-    timestamp: new Date().toISOString()
-  });
+  if (state.active) {
+    state.allResults.push({
+      keyword: state.currentKeyword,
+      posts: state.currentPosts,
+      timestamp: new Date().toISOString()
+    });
+  }
   
-  if (state.queue.length > 0) {
+  if (state.active && (state.queue.length > 0 || state.infiniteLoop)) {
+    if (state.queue.length === 0) {
+      state.queue = [...state.originalKeywords];
+      await addLog(`✔ Список слов завершен, начинаем цикл заново.`);
+    }
     state.currentKeyword = state.queue.shift();
     state.currentPosts = [];
     state.step = 'INITIAL_CHECK';
@@ -875,43 +899,35 @@ async function finishKeyword(state) {
     await chrome.storage.local.set({ scrapeState: state });
     
     runStateMachine();
-  } else {
+  } else if (state.active) {
     state.active = false;
-    await addLog(`Сбор полностью завершен! Сохраняю файл...`);
+    await addLog(`Сбор полностью завершен!`);
     await chrome.storage.local.set({ scrapeState: state });
-    downloadResults(state.allResults);
+    if (state.saveToPC !== false) {
+      await addLog(`Сохраняю файл...`);
+      downloadResults(state.allResults);
+    }
   }
 }
 
 function downloadResults(allResults) {
-  let output = `╔══════════════════════════════════════════════════════════════╗\n`;
-  output += `║ SEARCH SIMULATOR — MULTI KEYWORD RESULT                      ║\n`;
-  output += `║ Generated : ${new Date().toISOString()}                     ║\n`;
-  output += `╚══════════════════════════════════════════════════════════════╝\n`;
-  
+  let output = '';
   for (const result of allResults) {
-    output += `════════════════════════════════════════════════════════════════\n`;
-    output += `KEYWORD : ${result.keyword}\n`;
-    output += `Scraped : ${result.timestamp} Posts: ${result.posts.length}\n`;
-    output += `════════════════════════════════════════════════════════════════\n`;
-    
-    result.posts.forEach((post, index) => {
-      output += `▶ POST ${index + 1}\n`;
-      output += `Author : ${post.author}\n`;
-      output += `Author URL : ${post.authorUrl}\n`;
-      output += `Date : ${post.date}\n`;
-      output += `Post URL : ${post.url}\n`;
-      output += `Post Media : ${JSON.stringify(post.media)}\n`;
-      output += `Text :\n${post.text}\n`;
-      output += `────────────────────────────────────────────────────────────\n`;
-    });
+    for (const post of result.posts) {
+      const line = {
+         keyword: result.keyword,
+         scrapedAt: result.timestamp,
+         ...post
+      };
+      output += JSON.stringify(line) + '\n';
+    }
   }
   
-  const blob = new Blob([output], { type: 'text/plain' });
+  const blob = new Blob([output], { type: 'application/jsonl' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `scrape_result_${Date.now()}.txt`;
+  a.download = `scrape_result_${Date.now()}.jsonl`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -2,17 +2,20 @@
 function updateUI(state) {
   const startBtn = document.getElementById('start');
   const stopBtn = document.getElementById('stop');
+  const skipBtn = document.getElementById('skip');
   const statusEl = document.getElementById('status');
   const logsEl = document.getElementById('logs');
   
   if (state && state.active) {
     startBtn.style.display = 'none';
     stopBtn.style.display = 'block';
-    statusEl.innerText = `В процессе: ${state.currentKeyword} (${state.currentPosts?.length || 0}/${state.targetCount})`;
+    skipBtn.style.display = 'block';
+    statusEl.innerText = `В процессе: ${state.currentKeyword} (${state.currentPosts?.length || 0}${state.targetCount !== -1 ? '/' + state.targetCount : ''})`;
   } else {
     startBtn.style.display = 'block';
     startBtn.innerText = state && state.allResults?.length > 0 ? 'Начать заново' : 'Начать сбор';
     stopBtn.style.display = 'none';
+    skipBtn.style.display = 'none';
     statusEl.innerText = 'Остановлено / Ожидание';
   }
   
@@ -28,10 +31,25 @@ function updateUI(state) {
   }
 }
 
-document.getElementById('start').addEventListener('click', () => {
-  const keywordsRaw = document.getElementById('keywords').value;
-  const count = parseInt(document.getElementById('count').value, 10);
-  const platform = document.getElementById('platform').value;
+  document.getElementById('limitCountToggle').addEventListener('change', (e) => {
+    document.getElementById('count').disabled = !e.target.checked;
+  });
+
+  document.getElementById('dateLimitToggle').addEventListener('change', (e) => {
+    document.getElementById('dateLimit').disabled = !e.target.checked;
+  });
+
+  document.getElementById('start').addEventListener('click', () => {
+    const keywordsRaw = document.getElementById('keywords').value;
+    const limitCountEnabled = document.getElementById('limitCountToggle').checked;
+    const count = limitCountEnabled ? parseInt(document.getElementById('count').value, 10) : -1;
+    const dateLimitEnabled = document.getElementById('dateLimitToggle').checked;
+    const dateLimitVal = document.getElementById('dateLimit').value; // YYYY-MM-DDTHH:mm
+    const dateLimit = (dateLimitEnabled && dateLimitVal) ? new Date(dateLimitVal).getTime() : null;
+    const platform = document.getElementById('platform').value;
+    const infiniteLoop = document.getElementById('infiniteLoopToggle').checked;
+    const sendToServer = document.getElementById('sendToServerToggle').checked;
+    const saveToPC = document.getElementById('saveToPCToggle').checked;
   
   const keywords = keywordsRaw.split('\n').map(k => k.trim()).filter(k => k.length > 0);
   
@@ -44,8 +62,13 @@ document.getElementById('start').addEventListener('click', () => {
     active: true,
     platform: platform,
     queue: keywords.slice(1),
+    originalKeywords: keywords,
     currentKeyword: keywords[0],
     targetCount: count,
+    dateLimit: dateLimit,
+    infiniteLoop: infiniteLoop,
+    sendToServer: sendToServer,
+    saveToPC: saveToPC,
     currentPosts: [],
     allResults: [],
     step: 'INITIAL_CHECK',
@@ -75,7 +98,54 @@ document.getElementById('stop').addEventListener('click', () => {
       const state = res.scrapeState;
       state.active = false;
       state.logs.push(`[${new Date().toLocaleTimeString()}] 🛑 Остановлено пользователем.`);
-      chrome.storage.local.set({ scrapeState: state });
+      
+      if (state.currentPosts && state.currentPosts.length > 0) {
+        state.allResults.push({
+          keyword: state.currentKeyword,
+          posts: state.currentPosts,
+          timestamp: new Date().toISOString()
+        });
+        state.currentPosts = [];
+      }
+      
+      chrome.storage.local.set({ scrapeState: state }, () => {
+        if (state.saveToPC !== false) {
+          let output = '';
+          for (const result of state.allResults) {
+            for (const post of result.posts) {
+              output += JSON.stringify({
+                 keyword: result.keyword,
+                 scrapedAt: result.timestamp,
+                 ...post
+              }) + '\n';
+            }
+          }
+          if (output) {
+            const blob = new Blob([output], { type: 'application/jsonl' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `scrape_result_${Date.now()}.jsonl`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
+        }
+      });
+    }
+  });
+});
+
+document.getElementById('skip').addEventListener('click', () => {
+  chrome.storage.local.get(['scrapeState'], (res) => {
+    if (res.scrapeState) {
+      const state = res.scrapeState;
+      if (state.active) {
+        state.skipCurrentKeyword = true;
+        state.logs.push(`[${new Date().toLocaleTimeString()}] ⏭️ Пропуск слова: ${state.currentKeyword}`);
+        chrome.storage.local.set({ scrapeState: state });
+      }
     }
   });
 });
